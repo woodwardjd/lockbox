@@ -1,7 +1,7 @@
 About
 =====
 
-The primary goal of this project is to provide Dropbox users with
+The primary goal of this project is to provide [Dropbox](http://db.tt/nN0Obnw) users with
 end-to-end strong encryption of a portion of their documents with a
 user experience which matches the normal Dropbox experience as closely
 as possible, including Dropbox's superb sharing experience.
@@ -55,24 +55,25 @@ This is a very early version.  While some bits are configurable I
 wouldn't warrant this as generally user friendly yet.
 
 Broadly, you'll need:
+
 * ruby (I'm using 1.9.2 via rvm on Mac OS X 10.6.6)
 * gpg2 (I'm using 2.0.17 from http://www.gpgtools.org/installer/index.html)
 
 Installation
 ============
 
-$ git clone git://github.com/woodwardjd/lockbox.git
-$ cd lockbox
-$ bundle install
+    $ git clone git://github.com/woodwardjd/lockbox.git
+    $ cd lockbox
+    $ bundle install
 
 Then, edit lockbox.rb to change your paths and keynames (see?  told
 you it wasn't very configurable yet).  Then run it.
 
-$ ruby lockbox.rb
+    $ ruby lockbox.rb
 
-Now, edit files inside your cleartext Lockbox directory (~/Lockbox by
+Now, edit files inside your cleartext Lockbox directory (`~/Lockbox` by
 default).  They'll be automatically encrypted and copied into your
-ciphertext Lockbox directory (~/Dropbox/Lockbox by default).
+ciphertext Lockbox directory (`~/Dropbox/Lockbox` by default).
 
 Currently, this is only while the lockbox.rb program is running.  And
 it doesn't decrypt yet.
