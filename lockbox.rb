@@ -2,7 +2,9 @@
 
 require 'directory_watcher'
 require 'fileutils'
-require 'gpgr'
+require 'gpgme'
+
+GPGME::check_version({})  # http://rubyforge.org/tracker/index.php?func=detail&aid=27203&group_id=2369&atid=9203
 
 encrypted_dir = File.expand_path('~/Dropbox/Lockbox')
 clear_dir = File.expand_path('~/Lockbox')
@@ -33,7 +35,9 @@ dw.add_observer do |*args|
       #puts "   copying" 
       #FileUtils.cp event.path, File.dirname(event.path).sub(clear_dir,encrypted_dir)
       puts "   encrypting"
-      Gpgr::Encrypt.file(event.path, :to => event.path.sub(clear_dir,encrypted_dir)).encrypt_using ['jason@jwoodward.com']
+      GPGME.encrypt(['jason@jwoodward.com'], (inf = File.new(event.path, 'r')), (outf = File.new(event.path.sub(clear_dir,encrypted_dir), 'w')))
+      inf.close
+      outf.close
       puts "   work done."
     elsif event.type == :removed
       FileUtils.rm event.path.sub(clear_dir,encrypted_dir)

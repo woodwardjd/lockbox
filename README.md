@@ -57,7 +57,8 @@ wouldn't warrant this as generally user friendly yet.
 Broadly, you'll need:
 
 * ruby (I'm using 1.9.2 via rvm on Mac OS X 10.6.6)
-* gpg2 (I'm using 2.0.17 from http://www.gpgtools.org/installer/index.html)
+* gpg (I'm using 1.4.11 from `brew install gpgme`)
+* their dependencies (including Xcode for installing brew)
 
 Installation
 ============
@@ -92,3 +93,15 @@ TODO
   standalone (without having to install dependencies) on multiple operating systems
 * Updating the dependent gpgr gem to include the decryption functions
   built as part of this project
+* Support subdirectories
+* Encrypt filenames
+
+
+Random History Notes
+====================
+
+TODO: update this section to note x86_64 ruby env.
+I started with gpg2 from http://gpgtools.org, but removed it and
+reverted to using brew to install gnupg and gpgme because, to build
+the dependent gpgme gem, I needed x86_64 binaries, and gpgtools only
+ships with i386 binaries.
