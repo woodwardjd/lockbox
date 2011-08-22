@@ -9,10 +9,10 @@ as possible, including Dropbox's superb sharing experience.
 The strategy is to create a watched folder, similar to the existing
 Dropbox folder, in which changed files get encrypted and copied into
 the Dropbox folder.  Files updated in the Dropbox folder are decrypted
-and copied to the lockbox folder when they're updated.
+and copied to the Lockbox folder when they're updated.
 
-Your entire Dropbox is not encrypted with lockbox.  Only files stored
-in the special lockbox directory are encrypted. 
+Your entire Dropbox is not encrypted with Lockbox.  Only files stored
+in the special Lockbox directory are encrypted. 
 
 Motivation
 ==========
@@ -33,7 +33,7 @@ parties under a number of circumstances, including court order (public
 or secret), or through social engineering attacks on individuals who
 would otherwise have the legitimate ability to read your data.
 
-This makes some folks uncomfortable.  The lockbox software's goal is
+This makes some folks uncomfortable.  The Lockbox software's goal is
 eliminate this uncertainty of who can read your data, while
 maintaining the Just Works (tm) semantics of regular Dropbox.
 
@@ -45,63 +45,95 @@ but we think it has advantages over some of the other ways.
 
 * TrueCrypt volume in your Dropbox - has trouble with the cool sharing
   mechanism in DropBox
-* Manual encryption of your files - lockbox more or less automates this
+* Manual encryption of your files - Lockbox more or less automates this
 * Alternate providers like SpiderOak - sharing isn't as dead simple as Dropbox
 
 Requirements
 ============
 
-This is a very early version.  While some bits are configurable I
+This is still a very early version.  While some bits are configurable I
 wouldn't warrant this as generally user friendly yet.
 
-Broadly, you'll need:
+Broadly, you'll need the following, in this order more or less:
 
-* ruby (I'm using 1.9.2 via rvm on Mac OS X 10.6.6)
+* python (I'm using 2.7.1 via pythonbrew on Mac OS X 10.6.8)
 * gpg (I'm using 1.4.11 from `brew install gpgme`)
+* distribute and pip as described in the [Prerequisites and Using the installer sections](http://www.pip-installer.org/en/latest/installing.html)
+* On Windows, install PyYAML 3.10 [from their installer](http://pyyaml.org/wiki/PyYAML)
+* [watchdog](http://pypi.python.org/pypi/watchdog), on Mac OS you'll
+  need the latest
+  [version from github](https://github.com/gorakhargosh/watchdog).
+  This is for the working FSEvents-based observer.  The kqueue
+  observer can easily get overwhelmed with many files in your Dropbox
+* My [version of pyme](https://github.com/woodwardjd/pyme) which
+  patches what appears to be a problem with file-based data
+  manipulation with more recent versions of GPGME
 * their dependencies (including Xcode for installing brew)
+
+On Windows I built the C modules (pyme, etc) and installer using the (MinGW toolchain)[http://www.mingw.org/]
+
+A note on the Mac OS build environment:  There's a good chance this'll
+work with the apple-shipped version of python.  However, I haven't
+delved too deeply into making that happen, notably because the
+[GPGTools builds](http://www.gpgtools.org/) weren't universal (i386
+and x86_64) last time I worked with them, and python.org's 2.7 seemed
+to ship x86_64 only.  That's a TODO to cut down on having to build
+your own python.  Probably pretty straight forward, but it isn't a
+priority for me right now.
 
 Installation
 ============
 
+First, install all the stuff as seen in Requirements above. Setup.py
+is pretty much just a stub right now, and doesn't do much.
+
     $ git clone git://github.com/woodwardjd/lockbox.git
     $ cd lockbox
-    $ bundle install
 
-Then, edit lockbox.rb to change your paths and keynames (see?  told
+Then, edit lockbox.py to change your default paths and keynames (see?  told
 you it wasn't very configurable yet).  Then run it.
 
-    $ ruby lockbox.rb
+    $ python lockbox.py
 
 Now, edit files inside your cleartext Lockbox directory (`~/Lockbox` by
-default).  They'll be automatically encrypted and copied into your
-ciphertext Lockbox directory (`~/Dropbox/Lockbox` by default).
+default).  Folders (called "shares") in this directory map to folders
+in your Dropbox, with LOCKBOX- prepended to the name.  When you
+edit files in these directories they'll be automatically encrypted and
+copied into the associated ciphertext Lockbox directory.  For
+instance, `~/Lockbox/secretproject/stuff/information.txt` will get encrypted
+to `~/Dropbox/LOCKBOX-secretproject/stuff/information.txt`.  
 
-Currently, this is only while the lockbox.rb program is running.  And
-it doesn't decrypt yet.
+When friends share a new LOCKBOX- prefixed folder with you in Dropbox
+(using Dropbox's regular sharing mechanism) Lockbox will automatically
+detect that and begin decrypting its contents, assuming you and your
+friend have already exchanged encryption keys, and your friend has
+configured their copy of Lockbox to specify you as a recipient.
+
+Currently, Lockbox does not start up automatically or run in the
+background.  You'll need to start it manually and keep it running.  It
+will, however, catch up when you run it next time.
 
 TODO
 ====
 
-* Configuration without editing the .rb file
-* Multiple Lockbox directories instead of just the one (more suitable
-  for using with Dropbox's fantastic sharing mechanism)
-* Automatic discovery of multiple Lockbox directories
-* Daemonizing / automatic startup
+In no particular order, though mostly from more important/likely to be
+implemented to less important/likely to be implemented.
+
+* Recipient key configuration in Lockbox/ShareName/.lockbox/config.yml
+* Daemonizing / automatic startup, with catch-up to account for
+  changes made while Lockbox isn't running
+* Cut down on the amount of non-stock building of python, etc that
+  is recommended above
 * selection of public key vs. symmetric key encryption (the latter
   being easier for some folks when sharing)
-* Packaging of the software into an executable suitable for running
-  standalone (without having to install dependencies) on multiple operating systems
-* Updating the dependent gpgr gem to include the decryption functions
-  built as part of this project
-* Support subdirectories
 * Encrypt filenames
-
+* Pretty OS-specific eye candy (system tray applet, menu bar applet, etc)
+* Avoid standalone GPG installation requirement
 
 Random History Notes
 ====================
 
-TODO: update this section to note x86_64 ruby env.
-I started with gpg2 from http://gpgtools.org, but removed it and
-reverted to using brew to install gnupg and gpgme because, to build
-the dependent gpgme gem, I needed x86_64 binaries, and gpgtools only
-ships with i386 binaries.
+* The first version (0.0.0) I wrote was in Ruby, but I abandoned that
+  for Python soon after the proof of concept was built due to what
+  seemed like better OS-specific packaging and distribution
+  capabilities in the Python world. YMMV.
