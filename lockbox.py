@@ -16,39 +16,15 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('lockbox')
 
 import sys
-from pyme import core, constants, errors, pygpgme
-import pyme.constants.validity
 
-if not core.check_version('1.3.0'):
-    logger.error('this program is designed to run against GPGME version 1.3.0')
-    exit()
+import M2Crypto
+from M2Crypto import BIO, EVP, Rand, m2
 
-if not core.engine_check_version(pygpgme.GPGME_PROTOCOL_OpenPGP):
-    logger.error('According to my checks, you do not have GPG installed.  Or at least I was unable to find it.  This needs to be remedied')
-    exit()
-
-## TODO: check to see that gpg-agent is a) configured correctly and b) running
 ## TODO: on Mac OS, check that we're using FSEvents
 
-OpenPGPInfo = [x for x in core.get_engine_info() if x.protocol == pygpgme.GPGME_PROTOCOL_OpenPGP][0]
-logger.info('Using gpg version %s in %s', OpenPGPInfo.version, OpenPGPInfo.file_name)
+logger.info('Using m2crypto version %s with %s', M2Crypto.version, m2.OPENSSL_VERSION_TEXT)
 
 logger.debug("starting...")
-
-
-def email2key_for_encrypt_sign(gpgme_context, email):
-    """try to get a gpgme_key_t (for passing in gpgme_op_encrypt_sign()'s array of recipients) from email address"""
-    ## TODO: convert this loop into an iterator / generator of some sort.  this looks ugly.
-    gpgme_context.op_keylist_start(email, 0)
-    r = gpgme_context.op_keylist_next()
-    some = (r != None)
-    while some:
-        if r.can_encrypt:
-            if email in [x.email for x in r.uids]:
-                return r
-        r = gpgme_context.op_keylist_next()
-        some = (r != None)
-    return None
 
 # http://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
 def mkdir_p(path):
@@ -112,10 +88,14 @@ def common_handle_event(self, event, clear_or_cipher, action):
                 logger.info('Not going to handle a share name in the Lockbox directory prefixed with LOCKBOX-: %s', event.src_path)
                 return
             share_name = share_name[len('LOCKBOX-'):]
+        if stem.startswith('.lockbox'):
+            logger.info("Not going to handle .lockbox config directories")
+            return
         self.q[stem] = { 'collided': False,
                          'action': action,
                          'stem': stem,
                          'share_name': share_name,
+                         'config_dir_path': os.path.join(self.cleartext_dir, share_name, '.lockbox'),
                          'cleartext_full_path': os.path.join(self.cleartext_dir, share_name, stem),
                          'ciphertext_full_path': os.path.join(self.ciphertext_dir, 'LOCKBOX-' + share_name, stem)
                         }        
@@ -160,6 +140,27 @@ class CiphertextEventHandler(LoggingEventHandler):
         super(CiphertextEventHandler, self).on_modified(event)
         common_handle_event(self, event, 'cipher', 'decrypt')
 
+## http://code.activestate.com/recipes/510399-byte-to-hex-and-hex-to-byte-string-conversion/
+def ByteToHex( byteStr ):
+    """
+    Convert a byte string to it's hex string representation e.g. for output.
+    """
+    return ''.join( [ "%02X" % ord( x ) for x in byteStr ] ).strip()
+
+def HexToByte( hexStr ):
+    """
+    Convert a string hex byte values into a byte string. The Hex Byte values may
+    or may not be space separated.
+    """
+    bytes = []
+
+    hexStr = ''.join( hexStr.split(" ") )
+
+    for i in range(0, len(hexStr), 2):
+        bytes.append( chr( int (hexStr[i:i+2], 16 ) ) )
+
+    return ''.join( bytes )
+
 def main():
 
     q = LockboxOrderedDict()
@@ -168,17 +169,12 @@ def main():
     observer.schedule(CiphertextEventHandler(q, cleartext_dir, ciphertext_dir), path=ciphertext_dir, recursive=True)
     observer.start()
 
-    gpgme_context = core.Context()
-    #gpgme_context.set_armor(1)
-    ## TODO: read this on a per-queue-entry basis from Clear-share/.lockbox/config.yml
-    keys = [email2key_for_encrypt_sign(gpgme_context, 'jason@jwoodward.com')]
-
     try:
         while True:
             time.sleep(1)
             try:
                 while True:
-                    (stem, deets) = q.first()
+                    (stem, deets) = q.first()  #just read, don't pop here because we need it to stay in the OrderedDict in case another event comes in on this file before we're done
                     logger.debug('%s %s', stem, deets)
                     if not deets['collided']:
                         check_for_collided_after_operation = False
@@ -188,17 +184,42 @@ def main():
                             target_path = deets['ciphertext_full_path']
                             (tmp_fd, tmp_path) = tempfile.mkstemp()
                             os.close(tmp_fd)
-                            ## TODO: handle multiple recipients
-                            ## TODO: handle failure of encryption
-                            inf = open(deets['cleartext_full_path'], 'rb')
-                            inf_d = core.Data(file=inf)
-                            outf = open(tmp_path,'w+b')
-                            outf_d = core.Data(file=outf)
-                            x = gpgme_context.op_encrypt_sign(keys, core.pygpgme.GPGME_ENCRYPT_ALWAYS_TRUST,
-                                                              inf_d, outf_d )
-                            outf.flush()
-                            outf.close()
-                            inf.close()
+
+
+                            rio = BIO.openfile(deets['cleartext_full_path'], 'rb')
+                            rio.write_close()
+                            wrio = BIO.openfile(tmp_path, 'wb')
+
+                            cf = BIO.CipherStream(wrio)
+
+                            salt = Rand.rand_pseudo_bytes(8)[0]
+                            logger.debug("salt=%s",ByteToHex(salt))
+
+                            passphrase_f = open(os.path.join(deets['config_dir_path'], 'key.txt'), 'r')  ## TODO cache this
+                            passphrase = passphrase_f.readline().rstrip()
+                            passphrase_f.close()
+
+                            (key, iv) = m2.bytes_to_key(m2.aes_256_cbc(), m2.md5(), passphrase, salt, 1)
+                            logger.debug("key=%s", ByteToHex(key))
+                            logger.debug("iv=%s", ByteToHex(iv))
+
+                            cf.set_cipher('aes_256_cbc', key, iv, 1)
+                            wrio.write('Salted__')  # magic - see openssl's enc.c
+                            wrio.write(salt)
+
+                            while True:
+                                out = rio.read(4096)
+                                if not out:
+                                    break
+                                cf.write(out)
+
+                            cf.flush()
+                            cf.write_close()
+                            cf.close()
+                            wrio.flush()
+                            wrio.write_close()
+                            wrio.close()
+
                         elif deets['action'] == 'decrypt':
                             logger.debug('decrypting from %s to %s', deets['ciphertext_full_path'], deets['cleartext_full_path'])
                             check_for_collided_after_operation = True
@@ -206,14 +227,44 @@ def main():
                             (tmp_fd, tmp_path) = tempfile.mkstemp()
                             os.close(tmp_fd)
                             ## TODO: handle failure of decryption
-                            inf = open(deets['ciphertext_full_path'], 'rb')
-                            inf_d = core.Data(file=inf)
-                            outf = open(tmp_path, 'w+b')
-                            outf_d = core.Data(file=outf)
-                            gpgme_context.op_decrypt_verify(inf_d,outf_d)
-                            outf.flush()
-                            outf.close()
-                            inf.close()
+
+                            rio = BIO.openfile(deets['ciphertext_full_path'], 'rb')
+                            rio.write_close()
+                            wrio = BIO.openfile(deets['cleartext_full_path'], 'wb')
+
+                            cf = BIO.CipherStream(wrio)
+
+                            header = rio.read(size=len('Salted__'))
+                            if header != 'Salted__':
+                                print "uh, this doesn't look like an encrypted file"
+                                exit()
+                            salt = rio.read(size=8)
+                            logger.debug("salt=%s",ByteToHex(salt))
+
+                            passphrase_f = open(os.path.join(deets['config_dir_path'], 'key.txt'), 'r')  ## TODO cache this
+                            passphrase = passphrase_f.readline().rstrip()
+                            passphrase_f.close()
+
+                            (key, iv) = m2.bytes_to_key(m2.aes_256_cbc(), m2.md5(), passphrase, salt, 1)
+                            logger.debug("key=%s", ByteToHex(key))
+                            logger.debug("iv=%s", ByteToHex(iv))
+
+                            cf.set_cipher('aes_256_cbc', key, iv, 0)
+
+                            while True:
+                                out = rio.read(4096)
+                                if not out:
+                                    break
+                                cf.write(out)
+
+                            cf.flush()
+                            cf.write_close()
+                            cf.close()
+                            wrio.flush()
+                            wrio.write_close()
+                            wrio.close()
+
+
                         elif deets['action'] == 'delete-cipher':
                             logger.debug('deleting %s', deets['ciphertext_full_path'])
                             if os.path.exists(deets['ciphertext_full_path']):
@@ -227,10 +278,11 @@ def main():
                         else:
                             logger.error('Unknown action %s on %s', deets['action'], deets)
 
+                        time.sleep(0)  ## http://stackoverflow.com/questions/787803/how-does-a-threading-thread-yield-the-rest-of-its-quantum-in-python
+                        (stem, deets) = q.popitem(False)
+
                         if check_for_collided_after_operation:
                             ## now, if it got marked as collided in the interim while we were encrypting/decrypting then we don't want to overwrite 
-                            time.sleep(0)  ## http://stackoverflow.com/questions/787803/how-does-a-threading-thread-yield-the-rest-of-its-quantum-in-python
-                            (stem, deets) = q.popitem(False)
                             if not deets['collided']:
                                 ## move from temp location to real location
                                 if platform.system() == 'Windows':
@@ -247,6 +299,7 @@ def main():
                                 ## TODO: delete tmp_path in the case that we're no longer using it (it was an encrypt that we no longer can copy to the ciphertext location)
                                 pass
                     else:
+                        (stem, deets) = q.popitem(False)
                         if deets['action'] in ('delete-clear','delete-cipher'):
                             logger.error('should not get a collided delete because they should be removed from the queue in our OrderedDict subclass')
                         else:

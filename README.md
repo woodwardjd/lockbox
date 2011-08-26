@@ -57,7 +57,6 @@ wouldn't warrant this as generally user friendly yet.
 Broadly, you'll need the following, in this order more or less:
 
 * python (I'm using 2.7.1 via pythonbrew on Mac OS X 10.6.8)
-* gpg (I'm using 1.4.11 from `brew install gpgme`)
 * distribute and pip as described in the [Prerequisites and Using the installer sections](http://www.pip-installer.org/en/latest/installing.html)
 * On Windows, install PyYAML 3.10 [from their installer](http://pyyaml.org/wiki/PyYAML)
 * [watchdog](http://pypi.python.org/pypi/watchdog), on Mac OS you'll
@@ -65,12 +64,12 @@ Broadly, you'll need the following, in this order more or less:
   [version from github](https://github.com/gorakhargosh/watchdog).
   This is for the working FSEvents-based observer.  The kqueue
   observer can easily get overwhelmed with many files in your Dropbox
-* My [version of pyme](https://github.com/woodwardjd/pyme) which
-  patches what appears to be a problem with file-based data
-  manipulation with more recent versions of GPGME
+* m2crypto 0.21.1 with a patch
 * their dependencies (including Xcode for installing brew)
 
-On Windows I built the C modules (pyme, etc) and installer using the (MinGW toolchain)[http://www.mingw.org/]
+On Windows I built the C modules (m2crypto, etc) and installer using the
+(MinGW toolchain)[http://www.mingw.org/]. See the file
+installer_development_notes.md for more details
 
 A note on the Mac OS build environment:  There's a good chance this'll
 work with the apple-shipped version of python.  However, I haven't
@@ -113,6 +112,15 @@ Currently, Lockbox does not start up automatically or run in the
 background.  You'll need to start it manually and keep it running.  It
 will, however, catch up when you run it next time.
 
+Finally, the encryption scheme isn't necessarily upgrade friendly
+yet.  What I mean by this is several things.  First, it is currently
+not possible to have two or more people using a Dropbox share with
+Lockbox versions that don't match.  Second, since the encryption and
+configuration formats have yet to stablize there is a chance that
+you'll have to delete the encrypted version (in Dropbox) completely
+upon a future Lockbox upgrade (though this absolutely does not mean
+you have to delete files in the Lockbox folder!)
+
 TODO
 ====
 
@@ -124,15 +132,17 @@ implemented to less important/likely to be implemented.
   changes made while Lockbox isn't running
 * Cut down on the amount of non-stock building of python, etc that
   is recommended above
-* selection of public key vs. symmetric key encryption (the latter
-  being easier for some folks when sharing)
+* addition of public key encryption
 * Encrypt filenames
 * Pretty OS-specific eye candy (system tray applet, menu bar applet, etc)
-* Avoid standalone GPG installation requirement
 
 Random History Notes
 ====================
-
+* Had a lot of trouble working with the combination of gpg, gpg-agent,
+  passphrase callbacks and such, so I switched to m2crypto which uses
+  the openssl libs for the cryptography operations
+* Switched from asymmetric keys to symmetric key encryption to
+  simplify early version usability
 * The first version (0.0.0) I wrote was in Ruby, but I abandoned that
   for Python soon after the proof of concept was built due to what
   seemed like better OS-specific packaging and distribution
