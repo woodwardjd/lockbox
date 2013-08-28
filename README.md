@@ -31,7 +31,7 @@ this ability even though they are limited by strict policy and access
 control mechanisms.  By extension, your data could be read by other
 parties under a number of circumstances, including court order (public
 or secret), or through social engineering attacks on individuals who
-would otherwise have the legitimate ability to read your data.
+would otherwise have the legitimate ability to read your data. Indeed, [Kholia and Węgrzyn, 2013](https://www.usenix.org/system/files/conference/woot13/woot13-kholia.pdf) show it is (was) possible to hijack Dropbox folders on a LAN.
 
 This makes some folks uncomfortable.  The Lockbox software's goal is
 eliminate this uncertainty of who can read your data, while
